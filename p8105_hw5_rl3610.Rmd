@@ -1,0 +1,83 @@
+---
+title: "p8105_hw5_rl3610"
+author: "Ruohan Lyu"
+date: "2025-11-11"
+output: github_document
+---
+
+```{r, include = FALSE, message = FALSE, warning = FALSE}
+library(tidyverse)
+
+knitr::opts_chunk$set(
+	echo = TRUE,
+	warning = FALSE,
+  fig.width = 6,
+  fig.asp = .6,
+  out.width = "90%"
+)
+
+theme_set(theme_minimal() + theme(legend.position = "bottom"))
+
+options(
+  ggplot2.continuous.colour = "viridis",
+  ggplot2.continuous.fill = "viridis"
+)
+
+scale_colour_discrete = scale_colour_viridis_d
+scale_fill_discrete = scale_fill_viridis_d
+```
+
+# Problem 1
+
+### Create a funtion
+
+```{r}
+bday_sim = function(n) {
+  
+  birthdays = sample(1:365, n, replace = TRUE)
+
+  has_duplicate = length(unique(birthdays)) < n
+
+  has_duplicate
+  
+}
+```
+
+### Simulation
+
+```{r}
+bday_sim_results_df = 
+  expand_grid(
+    group_size = 2:50,
+    iter = 1:10000
+  ) |> 
+  mutate(
+    has_duplicate = map_lgl(group_size, bday_sim)
+  )
+
+bday_summary_df = 
+  bday_sim_results_df |> 
+  group_by(group_size) |> 
+  summarize(
+    prob_shared_bday = mean(has_duplicate)
+  )
+```
+
+### Make the plot
+
+```{r}
+bday_summary_df |> 
+  ggplot(aes(x = group_size, y = prob_shared_bday)) + 
+  geom_point(alpha = 0.7) + 
+  geom_line(alpha = 0.7) +
+  labs(
+    title = "Probability of Shared Birthday by Group Size",
+    x = "Group Size",
+    y = "Probability of Shared Birthday",
+    caption = "Based on 10,000 simulations per group size"
+  ) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_minimal()
+```
+
+The simulation results demonstrate the well-known "Birthday Paradox" phenomenon: With just 23 people, the probability of a shared birthday exceeds 50%, and with 50 people, the probability approaches over 97%.
