@@ -32,13 +32,13 @@ scale_fill_discrete = scale_fill_viridis_d
 ### Create a funtion
 
 ```{r}
-bday_sim = function(n) {
+bday_sim = function(n_room) {
   
-  birthdays = sample(1:365, n, replace = TRUE)
+  birthdays = sample(1:365, n_room, replace = TRUE)
 
-  has_duplicate = length(unique(birthdays)) < n
+  repeated_bday = length(unique(birthdays)) < n_room
 
-  has_duplicate
+  repeated_bday
   
 }
 ```
@@ -46,30 +46,29 @@ bday_sim = function(n) {
 ### Simulation
 
 ```{r}
-bday_sim_results_df = 
+bday_sim_results = 
   expand_grid(
-    group_size = 2:50,
+    bdays = 2:50, 
     iter = 1:10000
   ) |> 
   mutate(
-    has_duplicate = map_lgl(group_size, bday_sim)
-  )
-
-bday_summary_df = 
-  bday_sim_results_df |> 
-  group_by(group_size) |> 
+    result = map_lgl(bdays, bday_sim)
+  ) |> 
+  group_by(
+    bdays
+  ) |> 
   summarize(
-    prob_shared_bday = mean(has_duplicate)
+    prob_repeat = mean(result)
   )
 ```
 
 ### Make the plot
 
 ```{r}
-bday_summary_df |> 
-  ggplot(aes(x = group_size, y = prob_shared_bday)) + 
-  geom_point(alpha = 0.7) + 
-  geom_line(alpha = 0.7) +
+bday_sim_results |> 
+  ggplot(aes(x = bdays, y = prob_repeat)) + 
+  geom_point() + 
+  geom_line() +
   labs(
     title = "Probability of Shared Birthday by Group Size",
     x = "Group Size",
@@ -80,4 +79,115 @@ bday_summary_df |>
   theme_minimal()
 ```
 
-The simulation results demonstrate the well-known "Birthday Paradox" phenomenon: With just 23 people, the probability of a shared birthday exceeds 50%, and with 50 people, the probability approaches over 97%.
+The plot shows that the probability of shared birthday rises quickly as the number of people in the room increases. When the group size is small(fewer than 10 people), the probability of a shared birthday is very low. Around a group size of 23, the probability reaches about 50%, and by the time the group reaches around 50 people, the probability is close to 100%.
+
+
+# Problem 2
+
+### Create a funtion
+
+```{r}
+t_test_sim = function(mu) {
+
+  x = rnorm(n = 30, mean = mu, sd = 5)
+
+  test_result = t.test(x, mu = 0)
+  
+  tidy_results = broom::tidy(test_result)
+  
+  tibble(
+    mu_hat = pull(tidy_results, estimate),
+    p_value = pull(tidy_results, p.value)
+  )
+  
+}
+```
+
+### Simulation
+
+```{r}
+power_sim_results_df = 
+  expand_grid(
+    true_mu = c(0:6),
+    iter = 1:5000
+  ) |> 
+  mutate(
+    results = map(true_mu, t_test_sim)
+  ) |> 
+  unnest(results) |> 
+  mutate(
+    reject_null = p_value < 0.05
+  )
+```
+
+### Plot 1: Power vs. Effect Size
+
+```{r}
+power1_summary_df = 
+  power_sim_results_df |> 
+  group_by(true_mu) |> 
+  summarize(
+    power = mean(reject_null)
+  )
+
+power1_summary_df |> 
+  ggplot(aes(x = true_mu, y = power)) + 
+  geom_point() + 
+  geom_line() +
+  labs(
+    title = "Statistical Power vs. Effect Size",
+    x = "True Effect Size (μ)",
+    y = "Power (Probability of Rejecting H0)",
+    caption = "n = 30, σ = 5, α = 0.05, 5000 simulations per effect size"
+  ) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_minimal()
+
+power1_summary_df
+```
+
+The simulation results demonstrate a strong positive association between effect size and statistical power. As μ increases, the power of the t-test rises dramatically from approximately 5% to nearly 100%, showing that larger effect sizes are detected with substantially higher probability given a sample size of 30.
+
+
+### Plot 2: Average Estimates vs. True Effect Size
+
+```{r}
+power2_summary_df = 
+  power_sim_results_df |> 
+  group_by(true_mu) |> 
+  summarize(
+    avg_mu_hat = mean(mu_hat),
+    avg_mu_hat_rejected = mean(mu_hat[reject_null])
+  )
+
+power2_summary_df |> 
+  select(true_mu, avg_mu_hat, avg_mu_hat_rejected) |> 
+  pivot_longer(
+    cols = c(avg_mu_hat, avg_mu_hat_rejected),
+    names_to = "estimate_type",
+    values_to = "mean_estimate"
+  ) |> 
+  mutate(
+    estimate_type = case_when(
+      estimate_type == "avg_mu_hat" ~ "All Samples",
+      estimate_type == "avg_mu_hat_rejected" ~ "Only When H₀ Rejected"
+    )
+  ) |> 
+  ggplot(aes(x = true_mu, y = mean_estimate, color = estimate_type)) + 
+  geom_point() + 
+  geom_line() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", alpha = 0.5) +
+  labs(
+    title = "Average Estimates vs. True Effect Size",
+    x = "True Effect Size (μ)",
+    y = "Average Estimate (μ̂)",
+    color = "Sample Type",
+    caption = "Dashed line represents perfect estimation (y = x)"
+  ) +
+  theme_minimal()
+
+power2_summary_df
+```
+
+No, the sample average of μ̂ across tests for which the null is rejected is not approximately equal to the true value of μ, especially for small effects. This overestimation occurs because we only reject the null hypothesis when sampling variation produces unusually large estimates. The bias diminishes for larger true effects, where significance is almost guaranteed.
+
